@@ -1,0 +1,23 @@
+[
+  {
+    "match_id": "MB-VIL--BUY--20261020-01",
+    "village_id": "VIL-001",
+    "buyer_id": "BUY-001",
+    "baler_id": "BAL-001",
+    "truck_id": "TRK-001",
+    "pickup_date": "2026-10-20",
+    "matched_tonnes": 45.0,
+    "price_inr_per_tonne": 2250.0,
+    "transport_distance_km": 6.37,
+    "transport_cost_inr": 2990.25,
+    "baling_cost_inr": 32400.0,
+    "loading_cost_inr": 8100.0,
+    "total_cost_inr": 43490.25,
+    "estimated_farmer_net_revenue_inr": 57759.75,
+    "estimated_saving_vs_burning_inr": 69009.75,
+    "estimated_tonnes_diverted": 45.0,
+    "status": "CONFIRMED",
+    "is_simulated": true,
+    "explanation": "Scheduled 45.0t pickup on 2026-10-20 with Buyer 'Malwa Biomass Power Plant' (BUY-001) via Baler 'Gurmeet Custom Hiring Centre' and Truck 'Sher-e-Punjab Logistics 16T'. Road distance: 6.4km. Farmer net revenue: INR 57,759.75."
+  }
+]

@@ -1,0 +1,39 @@
+{
+  "VIL-001": {
+    "village_id": "VIL-001",
+    "best_choice": "sell",
+    "break_even_price_inr_per_tonne": 1866.0,
+    "recommended_price_low_inr_per_tonne": 1959.3,
+    "recommended_price_high_inr_per_tonne": 2332.5,
+    "net_keep_value_inr_per_tonne": 438.25,
+    "net_sell_value_inr_per_tonne": 1254.0,
+    "net_feed_value_inr_per_tonne": 870.0,
+    "currency": "INR",
+    "explanation": "SELL is recommended: Buyer offer of INR 2250.00/t yields net revenue of INR 1254.00/t after deducting INR 996.00/t collection costs. This exceeds the best on-farm alternative by INR 384.00/t.",
+    "is_simulated": true
+  },
+  "VIL-002": {
+    "village_id": "VIL-002",
+    "best_choice": "feed",
+    "break_even_price_inr_per_tonne": 2854.0,
+    "recommended_price_low_inr_per_tonne": 2996.7,
+    "recommended_price_high_inr_per_tonne": 3567.5,
+    "net_keep_value_inr_per_tonne": 438.25,
+    "net_sell_value_inr_per_tonne": 516.0,
+    "net_feed_value_inr_per_tonne": 1770.0,
+    "explanation": "FEED is recommended: Local fodder net return of INR 1770.00/t outperforms retention/mulching (INR 438.25/t) and selling net return (INR 516.00/t).",
+    "is_simulated": true
+  },
+  "VIL-003": {
+    "village_id": "VIL-003",
+    "best_choice": "keep",
+    "break_even_price_inr_per_tonne": 1670.75,
+    "recommended_price_low_inr_per_tonne": 1754.29,
+    "recommended_price_high_inr_per_tonne": 2088.44,
+    "net_keep_value_inr_per_tonne": 438.25,
+    "net_sell_value_inr_per_tonne": -32.5,
+    "net_feed_value_inr_per_tonne": 320.0,
+    "explanation": "KEEP is recommended: On-farm soil nutrient & moisture retention yields net agronomic value of INR 438.25/t (gross nutrient/carbon value INR 958.25/t minus INR 520.00/t incorporation cost). Current buyer offer gives only net INR -32.50/t (break-even is INR 1670.75/t).",
+    "is_simulated": true
+  }
+}

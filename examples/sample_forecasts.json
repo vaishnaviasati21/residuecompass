@@ -1,0 +1,54 @@
+[
+  {
+    "village_id": "VIL-001",
+    "village_name": "Raikot Cluster",
+    "harvest_date": "2026-10-20",
+    "collection_deadline": "2026-11-04",
+    "straw_tonnes_low": 140.0,
+    "straw_tonnes_expected": 160.0,
+    "straw_tonnes_high": 185.0,
+    "confidence": "High",
+    "latitude": 30.65,
+    "longitude": 75.6,
+    "is_simulated": true
+  },
+  {
+    "village_id": "VIL-002",
+    "village_name": "Bhawanigarh Dairy Belt",
+    "harvest_date": "2026-10-22",
+    "collection_deadline": "2026-11-06",
+    "straw_tonnes_low": 85.0,
+    "straw_tonnes_expected": 100.0,
+    "straw_tonnes_high": 115.0,
+    "confidence": "Medium",
+    "latitude": 30.27,
+    "longitude": 76.04,
+    "is_simulated": true
+  },
+  {
+    "village_id": "VIL-003",
+    "village_name": "Samana Remote Farms",
+    "harvest_date": "2026-10-24",
+    "collection_deadline": "2026-11-08",
+    "straw_tonnes_low": 190.0,
+    "straw_tonnes_expected": 220.0,
+    "straw_tonnes_high": 250.0,
+    "confidence": "High",
+    "latitude": 30.15,
+    "longitude": 76.19,
+    "is_simulated": true
+  },
+  {
+    "village_id": "VIL-004",
+    "village_name": "Nilokheri Urgent Zone",
+    "harvest_date": "2026-10-21",
+    "collection_deadline": "2026-10-28",
+    "straw_tonnes_low": 110.0,
+    "straw_tonnes_expected": 130.0,
+    "straw_tonnes_high": 145.0,
+    "confidence": "Medium",
+    "latitude": 29.83,
+    "longitude": 76.92,
+    "is_simulated": true
+  }
+]
