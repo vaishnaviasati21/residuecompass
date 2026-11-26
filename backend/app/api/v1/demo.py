@@ -3,9 +3,10 @@ One-click demo loop.
   POST /demo/run   – run the full village → forecast → decision → match → notify → burn-check cycle
   POST /demo/reset – reload seed data into the database (officer-only, DEMO_MODE=true only)
 
-The notification step now **persists** the notification to the notifications
-table (via sender.send_notification_for_match) rather than only rendering text.
-The rendered body is still surfaced in the response for the UI.
+Both endpoints require officer authentication AND DEMO_MODE=true.
+The notification step forces the non-delivery 'log' channel, uses the
+template matching the selected match's actual status (match_proposed vs
+match_confirmed), and reports real failures rather than masking them as 'ok'.
 """
 from fastapi import APIRouter
 
@@ -27,13 +28,13 @@ def _require_demo_mode():
 
 
 @router.post("/run", response_model=DemoLoopResponse)
-def demo_run(village_id: str = "PB-SNG-0142"):
+def demo_run(_officer: OfficerUser, village_id: str = "PB-SNG-0142"):
     """
-    One-click loop (available only when DEMO_MODE=true):
+    One-click loop (available only when DEMO_MODE=true and caller is officer):
     1. Pull latest forecast for the village
     2. Pull latest decision
     3. Pull first proposed match
-    4. Send + persist notification (idempotent)
+    4. Persist notification via non-delivery log channel (surfaces real failures)
     5. Pull burn events for the village
     """
     _require_demo_mode()
@@ -71,27 +72,48 @@ def demo_run(village_id: str = "PB-SNG-0142"):
         ) if match else "No PROPOSED match for this village.",
     ))
 
-    # ── Notification step: persist AND surface rendered text ──────────────
+    # ── Notification step: force log channel, match template to status ────
     notif_body = None
     if match and forecast:
-        # Persist to DB (idempotent – sender skips if already sent)
-        try:
-            send_notification_for_match(match["match_id"])
-        except Exception:
-            pass  # DB not available in some demo environments
-
-        # Always render for the response payload
+        template = (
+            "match_proposed"
+            if match["status"] == "PROPOSED"
+            else "match_confirmed"
+        )
         notif_body = render_message(
             language="pa",
-            template="match_confirmed",
+            template=template,
             pickup_date=str(match["pickup_date"]),
-            price=match["price_per_tonne_inr"],
+            price=int(match["price_per_tonne_inr"]),
             buyer_name=match["buyer"]["name"],
+            tonnes=match["tonnes"],
         )
-        steps.append(DemoLoopStep(step="notification", status="ok", detail=notif_body))
+        try:
+            sent_count = send_notification_for_match(
+                match["match_id"], channel_override="log"
+            )
+            if sent_count > 0:
+                steps.append(DemoLoopStep(
+                    step="notification", status="ok", detail=notif_body
+                ))
+            else:
+                steps.append(DemoLoopStep(
+                    step="notification",
+                    status="skipped",
+                    detail="Notification already sent or no eligible recipient.",
+                ))
+        except Exception as exc:
+            steps.append(DemoLoopStep(
+                step="notification",
+                status="failed",
+                detail=f"Notification send failed: {exc}",
+            ))
     else:
-        steps.append(DemoLoopStep(step="notification", status="skipped",
-                                  detail="Need a match to generate notification."))
+        steps.append(DemoLoopStep(
+            step="notification",
+            status="skipped",
+            detail="Need a match to generate notification.",
+        ))
 
     burns = queries.list_burn_events(village_id=village_id)
     burn_check = None
@@ -103,8 +125,11 @@ def demo_run(village_id: str = "PB-SNG-0142"):
             detail=f"Burn detected on {burn_check['detected_on']} – confidence {burn_check['confidence']}",
         ))
     else:
-        steps.append(DemoLoopStep(step="burn_check", status="clear",
-                                  detail="No burn events detected for this village."))
+        steps.append(DemoLoopStep(
+            step="burn_check",
+            status="clear",
+            detail="No burn events detected for this village.",
+        ))
 
     return DemoLoopResponse(
         village_id=village_id,
@@ -124,6 +149,6 @@ def demo_reset(_officer: OfficerUser):
     Requires officer authentication AND DEMO_MODE=true.
     """
     _require_demo_mode()
-    from scripts.load_seed import main as load_seed_main
-    load_seed_main()
-    return {"status": "ok", "message": "Seed data reloaded."}
+    from scripts.seed_demo import main as seed_demo_main
+    seed_demo_main()
+    return {"status": "ok", "message": "Demo reference data, users, and seed data reloaded."}

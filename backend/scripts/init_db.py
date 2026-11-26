@@ -1,6 +1,7 @@
 """
 Database initializer for startup (safe, idempotent, non-destructive).
-Applies index migrations only — NEVER truncates live data or seeds demo users.
+Applies all versioned Alembic migrations (`alembic upgrade head`).
+NEVER truncates live data or seeds demo users.
 
 To explicitly seed demo data & demo users in a DEMO_MODE=true environment:
     python scripts/seed_demo.py
@@ -8,10 +9,15 @@ To explicitly seed demo data & demo users in a DEMO_MODE=true environment:
 import importlib.util
 from pathlib import Path
 
-MIGRATIONS_DIR = Path(__file__).resolve().parents[1] / "migrations"
+from alembic import command
+from alembic.config import Config
+
+BACKEND_DIR = Path(__file__).resolve().parents[1]
+MIGRATIONS_DIR = BACKEND_DIR / "migrations"
 
 
 def run_migration_module(filename: str):
+    """Run a standalone Python migration/seed script (used by seed_demo.py)."""
     path = MIGRATIONS_DIR / filename
     spec = importlib.util.spec_from_file_location(path.stem, path)
     if spec and spec.loader:
@@ -21,8 +27,10 @@ def run_migration_module(filename: str):
 
 
 def main():
-    run_migration_module("004_indices.py")
-    print("Database migrations applied (non-destructive).")
+    cfg = Config(str(BACKEND_DIR / "alembic.ini"))
+    cfg.set_main_option("script_location", str(MIGRATIONS_DIR / "alembic"))
+    command.upgrade(cfg, "head")
+    print("Alembic migrations applied to head (non-destructive).")
 
 
 if __name__ == "__main__":

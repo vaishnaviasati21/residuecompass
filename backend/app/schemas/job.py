@@ -12,7 +12,7 @@ class JobTriggerRequest(BaseModel):
 class JobStatusResponse(BaseModel):
     run_id: str
     job: str
-    status: Literal["queued", "running", "done", "failed"]
+    status: Literal["queued", "running", "done", "failed", "cancelled"]
     started_at: datetime | None
     finished_at: datetime | None
     result: dict | None

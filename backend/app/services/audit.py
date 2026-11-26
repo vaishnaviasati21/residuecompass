@@ -24,7 +24,7 @@ def log_action(
     details: Optional[dict[str, Any]] = None,
 ) -> None:
     """
-    Insert a row into audit_log.
+    Insert a row into audit_log (timestamp column is `at` per 001_init.sql).
 
     Args:
         user_id:   ID of the authenticated user performing the action.
@@ -39,17 +39,17 @@ def log_action(
             conn.execute(
                 text("""
                     INSERT INTO audit_log
-                        (user_id, action, entity, entity_id, details, created_at)
+                        (user_id, action, entity, entity_id, details, at)
                     VALUES
-                        (:uid, :action, :entity, :eid, CAST(:details AS jsonb), :ts)
+                        (:uid, :action, :entity, :eid, CAST(:details AS jsonb), :at)
                 """),
                 {
-                    "uid":    user_id,
-                    "action": action,
-                    "entity": entity,
-                    "eid":    entity_id,
+                    "uid":     user_id,
+                    "action":  action,
+                    "entity":  entity,
+                    "eid":     entity_id,
                     "details": json.dumps(details or {}),
-                    "ts":     datetime.now(timezone.utc),
+                    "at":      datetime.now(timezone.utc),
                 },
             )
     except Exception:

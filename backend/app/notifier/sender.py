@@ -6,15 +6,19 @@ Channels:
   "twilio_sms"       – send real SMS via Twilio REST (needs TWILIO_* env vars)
   "twilio_whatsapp"  – send WhatsApp via Twilio sandbox
 
-The function send_notification_for_match() is the main entry point called by
-the notifications router, the demo loop, and Celery tasks.
+Concurrency-safe idempotency:
+  Uses a claim-first pattern backed by a partial unique index:
+    uq_notifications_match_user_active ON notifications (match_id, COALESCE(user_id, -1))
+    WHERE status IN ('queued', 'sent')
+  Before sending, we INSERT a 'queued' claim row with ON CONFLICT DO NOTHING
+  RETURNING id.  Only the winning worker receives an id and proceeds to deliver,
+  then updates that row to 'sent' (or 'failed').  Failed rows do not block
+  future retries.
 
-Idempotency: before inserting a new notification row, we check whether one
-already exists for the same (match_id, user_id, status='sent') pair.  If it
-does, we skip the send entirely.  This prevents duplicate messages on retries.
-
-Failure logging: Twilio errors are caught with logger.exception(), and the row
-is still persisted with status='failed' so operations teams can audit and retry.
+Missing-recipient handling:
+  - If user_id is None (no farmer registered for the village), or if a Twilio
+    channel is active and phone is missing, we never log status='sent'.
+    Instead we record status='failed' with an explicit detail and return 0.
 """
 import logging
 from datetime import datetime, timezone
@@ -29,38 +33,84 @@ from app.notifier.templates import render_message
 logger = logging.getLogger("notifier")
 
 
-def _already_sent(conn, match_id: str, user_id: Optional[int]) -> bool:
-    """Return True if a 'sent' notification already exists for this pair."""
-    row = conn.execute(
-        text("""
-            SELECT 1 FROM notifications
-             WHERE match_id = :mid
-               AND user_id  IS NOT DISTINCT FROM :uid
-               AND status   = 'sent'
-             LIMIT 1
-        """),
-        {"mid": match_id, "uid": user_id},
-    ).first()
-    return row is not None
-
-
-def _log_to_db(
+def _claim_notification(
+    conn,
     user_id: Optional[int],
     match_id: str,
     channel: str,
     language: str,
     body: str,
+) -> Optional[int]:
+    """
+    Atomically claim a notification slot for (match_id, user_id).
+    Returns the new notification id if claimed, or None if an active
+    ('queued' or 'sent') notification already exists.
+    """
+    row = conn.execute(
+        text("""
+            INSERT INTO notifications
+                (user_id, match_id, channel, language, body, status, sent_at)
+            VALUES
+                (:uid, :mid, :ch, :lang, :body, 'queued', :ts)
+            ON CONFLICT (match_id, COALESCE(user_id, -1))
+                WHERE status IN ('queued', 'sent')
+            DO NOTHING
+            RETURNING id
+        """),
+        {
+            "uid":  user_id,
+            "mid":  match_id,
+            "ch":   channel,
+            "lang": language,
+            "body": body,
+            "ts":   datetime.now(timezone.utc),
+        },
+    ).first()
+    return int(row[0]) if row else None
+
+
+def _finalize_notification(
+    conn,
+    notif_id: int,
     status: str,
+    channel: Optional[str] = None,
     provider_id: Optional[str] = None,
 ) -> None:
-    """Persist the notification record (regardless of success/failure)."""
+    """Update a claimed notification row to its final status ('sent' or 'failed')."""
+    conn.execute(
+        text("""
+            UPDATE notifications
+               SET status      = :st,
+                   channel     = COALESCE(:ch, channel),
+                   provider_id = :pid,
+                   sent_at     = :ts
+             WHERE id = :id
+        """),
+        {
+            "id":  notif_id,
+            "st":  status,
+            "ch":  channel,
+            "pid": provider_id,
+            "ts":  datetime.now(timezone.utc),
+        },
+    )
+
+
+def _log_failed_no_claim(
+    user_id: Optional[int],
+    match_id: str,
+    channel: str,
+    language: str,
+    body: str,
+) -> None:
+    """Persist a 'failed' record directly (e.g. missing recipient)."""
     with engine.begin() as conn:
         conn.execute(
             text("""
                 INSERT INTO notifications
-                    (user_id, match_id, channel, language, body, status, provider_id, sent_at)
+                    (user_id, match_id, channel, language, body, status, sent_at)
                 VALUES
-                    (:uid, :mid, :ch, :lang, :body, :st, :pid, :ts)
+                    (:uid, :mid, :ch, :lang, :body, 'failed', :ts)
             """),
             {
                 "uid":  user_id,
@@ -68,8 +118,6 @@ def _log_to_db(
                 "ch":   channel,
                 "lang": language,
                 "body": body,
-                "st":   status,
-                "pid":  provider_id,
                 "ts":   datetime.now(timezone.utc),
             },
         )
@@ -83,7 +131,7 @@ def _send_twilio(to_number: str, body: str, whatsapp: bool = False) -> Optional[
     try:
         from twilio.rest import Client as TwilioClient  # type: ignore
     except ImportError:
-        logger.warning("twilio library not installed; falling back to log channel")
+        logger.warning("twilio library not installed; cannot deliver via Twilio")
         return None
 
     try:
@@ -102,26 +150,25 @@ def _send_twilio(to_number: str, body: str, whatsapp: bool = False) -> Optional[
         return None
 
 
-def send_notification_for_match(match_id: str) -> int:
+def send_notification_for_match(
+    match_id: str,
+    channel_override: Optional[str] = None,
+) -> int:
     """
     Look up the match, find the farmer's phone, build the message in their
-    language, send it via the configured channel, and log it.
+    language, claim an idempotent slot, send it, and finalize status.
 
-    - Idempotency: skips if a 'sent' record already exists for this pair.
-    - Failure safety: Twilio errors are logged and persisted as 'failed'.
-    - Demo persistence: always writes a row even on the log channel.
-
-    Returns the number of notifications successfully sent (not skipped).
+    Returns the number of notifications successfully sent (not skipped/failed).
     """
     sql = text("""
         SELECT
-            m.match_id, m.village_id, m.pickup_date, m.price_per_tonne_inr, m.tonnes,
+            m.match_id, m.village_id, m.status AS match_status,
+            m.pickup_date, m.price_per_tonne_inr, m.tonnes,
             b.name AS buyer_name,
-            u.id  AS user_id, u.phone, u.language
+            u.id   AS user_id, u.phone, u.language
         FROM matches m
-        JOIN buyers  b ON b.id = m.buyer_id
+        JOIN buyers   b ON b.id = m.buyer_id
         JOIN villages v ON v.id = m.village_id
-        -- find the farmer linked to this village
         LEFT JOIN users u ON u.village_id = m.village_id AND u.role = 'farmer'
         WHERE m.match_id = :mid
     """)
@@ -133,57 +180,73 @@ def send_notification_for_match(match_id: str) -> int:
         logger.warning("send_notification: match %s not found", match_id)
         return 0
 
+    channel = channel_override or settings.NOTIFIER_CHANNEL
     count = 0
+
     for row in rows:
         user_id  = row["user_id"]
         language = row["language"] or "en"
-
-        # ── Idempotency guard ──────────────────────────────────────────────
-        with engine.connect() as conn:
-            if _already_sent(conn, match_id, user_id):
-                logger.info(
-                    "Notification already sent for match=%s user=%s – skipping",
-                    match_id, user_id,
-                )
-                continue
-
+        template = (
+            "match_proposed"
+            if row.get("match_status") == "PROPOSED"
+            else "match_confirmed"
+        )
         body = render_message(
             language=language,
-            template="match_confirmed",
+            template=template,
             buyer_name=row["buyer_name"],
             pickup_date=str(row["pickup_date"]),
             price=int(row["price_per_tonne_inr"]),
+            tonnes=row["tonnes"],
         )
 
-        channel     = settings.NOTIFIER_CHANNEL
-        provider_id: Optional[str] = None
-        status      = "sent"
+        # ── Missing-recipient guard ───────────────────────────────────────
+        if user_id is None:
+            logger.warning(
+                "send_notification: no farmer user registered for village %s (match %s)",
+                row["village_id"], match_id,
+            )
+            _log_failed_no_claim(None, match_id, channel, language, body)
+            continue
 
-        if channel in ("twilio_sms", "twilio_whatsapp") and row["phone"]:
+        if channel in ("twilio_sms", "twilio_whatsapp") and not row["phone"]:
+            logger.warning(
+                "send_notification: farmer user=%s has no phone number (match %s)",
+                user_id, match_id,
+            )
+            _log_failed_no_claim(user_id, match_id, channel, language, body)
+            continue
+
+        # ── Concurrency-safe claim ────────────────────────────────────────
+        with engine.begin() as conn:
+            notif_id = _claim_notification(
+                conn, user_id, match_id, channel, language, body
+            )
+
+        if notif_id is None:
+            logger.info(
+                "Notification already queued/sent for match=%s user=%s – skipping",
+                match_id, user_id,
+            )
+            continue
+
+        # ── Delivery ──────────────────────────────────────────────────────
+        provider_id: Optional[str] = None
+        status = "sent"
+
+        if channel in ("twilio_sms", "twilio_whatsapp"):
             sid = _send_twilio(
                 row["phone"], body, whatsapp=(channel == "twilio_whatsapp")
             )
             if sid:
                 provider_id = sid
             else:
-                # Twilio failed: persist as 'failed', do NOT fall back to 'log'
-                # channel silently – the failed status is the audit trail.
-                status  = "failed"
-                channel = "log"
+                status = "failed"
         else:
-            # Log channel – always print for observability
             logger.info("[NOTIF][%s][%s] %s", language, row.get("phone", "no-phone"), body)
 
-        # Always persist (even log-channel rows and failures)
-        _log_to_db(
-            user_id=user_id,
-            match_id=match_id,
-            channel=channel,
-            language=language,
-            body=body,
-            status=status,
-            provider_id=provider_id,
-        )
+        with engine.begin() as conn:
+            _finalize_notification(conn, notif_id, status, channel, provider_id)
 
         if status == "sent":
             count += 1

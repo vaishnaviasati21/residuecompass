@@ -1,14 +1,18 @@
 """
-Alembic env.py – runs the migration in both 'offline' and 'online' modes.
+Alembic env.py – runs migrations in both 'offline' and 'online' modes.
 """
+import os
+import sys
 from logging.config import fileConfig
-from sqlalchemy import engine_from_config, pool
-from alembic import context
 
-import sys, os
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+from alembic import context
+from sqlalchemy import engine_from_config, pool
+
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../.."))
 
 from app.core.config import settings
+from app.core.db import Base
+import app.models.tables  # noqa: F401  – register ORM metadata
 
 config = context.config
 config.set_main_option(
@@ -19,13 +23,13 @@ config.set_main_option(
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-target_metadata = None   # we use raw SQL migrations, not ORM models
+target_metadata = Base.metadata
 
 
 def run_migrations_offline():
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, literal_binds=True,
-                      dialect_opts={"paramstyle": "named"})
+    context.configure(url=url, target_metadata=target_metadata,
+                      literal_binds=True, dialect_opts={"paramstyle": "named"})
     with context.begin_transaction():
         context.run_migrations()
 

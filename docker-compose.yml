@@ -1,100 +1,115 @@
-version: "3.9"
-
-# ── Secrets ───────────────────────────────────────────────────────────────────
-# All credentials MUST be provided via the environment or a local .env file.
-# Never set defaults here.  See .env.example for required variables.
-# Required: POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
-#           SECRET_KEY, CORS_ORIGINS, DATABASE_URL
+# ── Production / Staging Compose ──────────────────────────────────────────────
+# Required environment variables (.env):
+#   POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_DB,
+#   DATABASE_URL, SECRET_KEY, CORS_ORIGINS
+#
+# - Database and Redis stay strictly on the internal Docker network (no host ports).
+# - API, worker, and beat run from the built image (no source bind-mounts).
+# - Caddy terminates TLS on :443 and proxies to api:8000.
+# - Schema changes are applied exclusively via Alembic (`python scripts/init_db.py`).
 
 services:
-  # ── PostgreSQL + PostGIS ───────────────────────────────────────────────────
+  # ── PostgreSQL + PostGIS (internal only) ───────────────────────────────────
   db:
     image: postgis/postgis:16-3.4
-    container_name: rc_db
     restart: unless-stopped
     environment:
       POSTGRES_USER:     ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB:       ${POSTGRES_DB}
-    ports:
-      - "5432:5432"
     volumes:
       - pgdata:/var/lib/postgresql/data
-      # Only DDL migrations are mounted – NO seed data.
-      # 002_seed.sql is intentionally excluded from this directory.
-      - ./backend/migrations/schema:/docker-entrypoint-initdb.d:ro
+    networks:
+      - internal
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── Redis ──────────────────────────────────────────────────────────────────
+  # ── Redis (internal only) ──────────────────────────────────────────────────
   redis:
     image: redis:7-alpine
-    container_name: rc_redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
+    networks:
+      - internal
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # ── FastAPI backend ────────────────────────────────────────────────────────
+  # ── FastAPI backend (internal only; exposed via Caddy TLS) ─────────────────
   api:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: rc_api
     restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    redis://redis:6379/0
+      SECRET_KEY:   ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DEMO_MODE:    "false"
-    ports:
-      - "8000:8000"
+    expose:
+      - "8000"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
-    # No --reload in production
+    networks:
+      - internal
     command: >
       sh -c "
         python scripts/init_db.py &&
         uvicorn app.main:app --host 0.0.0.0 --port 8000
       "
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:8000/api/v1/health || exit 1"]
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health')"]
       interval: 15s
       timeout: 5s
       retries: 3
-      start_period: 20s
+      start_period: 25s
+
+  # ── TLS Reverse Proxy (Caddy) ──────────────────────────────────────────────
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+    networks:
+      - internal
 
   # ── Celery worker ──────────────────────────────────────────────────────────
   worker:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: rc_worker
     restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    redis://redis:6379/0
+      SECRET_KEY:   ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DEMO_MODE:    "false"
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
-    volumes:
-      - ./backend:/app
+    networks:
+      - internal
     command: celery -A app.workers.task_runner._celery_app worker --loglevel=info
 
   # ── Celery beat (scheduler) ────────────────────────────────────────────────
@@ -102,18 +117,25 @@ services:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: rc_beat
     restart: unless-stopped
     env_file: .env
     environment:
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL:    redis://redis:6379/0
+      SECRET_KEY:   ${SECRET_KEY}
+      CORS_ORIGINS: ${CORS_ORIGINS}
       DEMO_MODE:    "false"
     depends_on:
       - worker
-    volumes:
-      - ./backend:/app
+    networks:
+      - internal
     command: celery -A app.workers.task_runner._celery_app beat --loglevel=info
+
+networks:
+  internal:
+    driver: bridge
 
 volumes:
   pgdata:
+  caddy_data:
+  caddy_config:

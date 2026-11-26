@@ -54,7 +54,8 @@ settings = Settings()
 
 def validate_security_config() -> None:
     """
-    Fail closed if SECRET_KEY is missing, a known placeholder, or too short.
+    Fail closed if SECRET_KEY is missing, a known placeholder, or too short,
+    or if CORS_ORIGINS is empty or wildcard ('*') outside DEMO_MODE.
     Called during application startup and token operations.
     """
     key = (settings.SECRET_KEY or "").strip()
@@ -66,3 +67,9 @@ def validate_security_config() -> None:
         raise RuntimeError(
             "Unsafe SECRET_KEY configuration: SECRET_KEY must be at least 32 characters."
         )
+    if not settings.DEMO_MODE:
+        origins = [o.strip() for o in (settings.CORS_ORIGINS or "").split(",") if o.strip()]
+        if not origins or "*" in origins:
+            raise RuntimeError(
+                "Unsafe CORS_ORIGINS configuration: explicit allowed origins are required when DEMO_MODE=false (wildcard '*' is forbidden)."
+            )
