@@ -1,0 +1,48 @@
+[
+  {
+    "match_id": "M-20261012-0007",
+    "village_id": "PB-SNG-0142",
+    "status": "PROPOSED",
+    "tonnes": 410.0,
+    "buyer": {
+      "id": "B-012",
+      "name": "Sample Pellet Unit",
+      "type": "PELLET",
+      "distance_km": 38
+    },
+    "baler": {
+      "id": "BAL-031"
+    },
+    "truck": {
+      "id": "TRK-114"
+    },
+    "pickup_date": "2026-10-24",
+    "price_per_tonne_inr": 1500,
+    "net_to_farmers_inr": 131200,
+    "saving_vs_burning_note": "Estimate, to be measured in the pilot",
+    "created_at": "2026-10-12T06:10:00Z"
+  },
+  {
+    "match_id": "M-20261012-0008",
+    "village_id": "PB-TTN-0031",
+    "status": "CONFIRMED",
+    "tonnes": 492.0,
+    "buyer": {
+      "id": "B-004",
+      "name": "Sample Biogas Plant",
+      "type": "BIOGAS",
+      "distance_km": 22
+    },
+    "baler": {
+      "id": "BAL-012"
+    },
+    "truck": {
+      "id": "TRK-077"
+    },
+    "pickup_date": "2026-10-18",
+    "price_per_tonne_inr": 1400,
+    "net_to_farmers_inr": 118080,
+    "saving_vs_burning_note": "Estimate, to be measured in the pilot",
+    "created_at": "2026-10-12T06:10:00Z"
+  }
+]
