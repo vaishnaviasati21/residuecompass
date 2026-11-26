@@ -1,0 +1,25 @@
+{
+  "PB-SNG-0142": {
+    "village_id": "PB-SNG-0142",
+    "village_name": "Sample Village",
+    "district": "Sangrur",
+    "season": "kharif-2026",
+    "harvest": {
+      "expected_date": "2026-10-20",
+      "earliest_date": "2026-10-16",
+      "latest_date": "2026-10-25"
+    },
+    "straw": {
+      "paddy_area_ha": 118.5,
+      "expected_tonnes": 410.0,
+      "low_tonnes": 360.0,
+      "high_tonnes": 455.0
+    },
+    "confidence": {
+      "tag": "MEDIUM",
+      "reasons": ["38% cloud cover in last 2 weeks", "limited past-season data"]
+    },
+    "model_version": "mock-0.1",
+    "generated_at": "2026-10-12T06:00:00Z"
+  }
+}
