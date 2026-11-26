@@ -21,7 +21,16 @@ def upgrade(op=None):
     """
     if op:
         op.execute(sql)
+    else:
+        from app.core.db import engine
+        from sqlalchemy import text
+        with engine.begin() as conn:
+            conn.execute(text(sql))
 
 
 def downgrade(op=None):
     pass
+
+
+if __name__ == "__main__":
+    upgrade()

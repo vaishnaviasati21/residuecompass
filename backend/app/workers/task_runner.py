@@ -47,18 +47,43 @@ def _refresh_forecasts(village_id: Optional[str] = None) -> dict:
         from app.core.db import engine
         from sqlalchemy import text
 
-        with engine.connect() as conn:
+        from datetime import date, datetime
+        import json
+        with engine.begin() as conn:
             if village_id:
                 vids = [village_id]
             else:
                 vids = [r[0] for r in conn.execute(text("SELECT id FROM villages")).all()]
 
-        count = 0
-        for vid in vids:
-            result = predict_village(vid)
-            # Upsert into forecasts table … (Part 3 handles the exact shape)
-            logger.info("[FORECAST] %s refreshed", vid)
-            count += 1
+            count = 0
+            for vid in vids:
+                result = predict_village(vid)
+                conn.execute(text("""
+                    INSERT INTO forecasts
+                    (village_id, season, harvest_expected, harvest_earliest, harvest_latest,
+                     paddy_area_ha, straw_expected, straw_low, straw_high, confidence_tag,
+                     reasons, model_version, generated_at, harvest_status)
+                    VALUES
+                    (:vid, :season, :he, :hea, :hl, :area, :se, :sl, :sh, :tag,
+                     CAST(:reasons AS jsonb), :mv, :gen, :hs)
+                """), {
+                    "vid": vid,
+                    "season": result["season"],
+                    "he": date.fromisoformat(str(result["harvest"]["expected_date"])),
+                    "hea": date.fromisoformat(str(result["harvest"]["earliest_date"])),
+                    "hl": date.fromisoformat(str(result["harvest"]["latest_date"])),
+                    "area": result["straw"]["paddy_area_ha"],
+                    "se": result["straw"]["expected_tonnes"],
+                    "sl": result["straw"]["low_tonnes"],
+                    "sh": result["straw"]["high_tonnes"],
+                    "tag": result["confidence"]["tag"],
+                    "reasons": json.dumps(result["confidence"].get("reasons", [])),
+                    "mv": result.get("model_version", "ml-1.0"),
+                    "gen": datetime.fromisoformat(str(result["generated_at"]).replace("Z", "+00:00")),
+                    "hs": result.get("harvest_status", "READY_SOON"),
+                })
+                logger.info("[FORECAST] %s refreshed", vid)
+                count += 1
         return {"villages_refreshed": count}
     except ImportError:
         logger.warning("ml.predict not found – using seed data")
@@ -75,7 +100,36 @@ def _run_matching() -> dict:
         import sys, os
         sys.path.insert(0, os.path.join(os.path.dirname(__file__), "../../../../economics"))
         from match import run_matching  # type: ignore
+        from datetime import date, datetime
+        from app.core.db import engine
+        from sqlalchemy import text
         matches = run_matching()
+        with engine.begin() as conn:
+            for m in matches:
+                conn.execute(text("""
+                    INSERT INTO matches
+                    (match_id, village_id, buyer_id, baler_id, truck_id, tonnes, pickup_date,
+                     price_per_tonne_inr, status, created_at, net_to_farmers_inr)
+                    VALUES
+                    (:id, :vid, :bid, :bal, :trk, :t, :pd, :price, :st, :ca, :net)
+                    ON CONFLICT (match_id) DO UPDATE SET
+                        tonnes = EXCLUDED.tonnes,
+                        pickup_date = EXCLUDED.pickup_date,
+                        price_per_tonne_inr = EXCLUDED.price_per_tonne_inr,
+                        net_to_farmers_inr = EXCLUDED.net_to_farmers_inr
+                """), {
+                    "id": m["match_id"],
+                    "vid": m["village_id"],
+                    "bid": m["buyer"]["id"],
+                    "bal": m["baler"]["id"],
+                    "trk": m["truck"]["id"],
+                    "t": m["tonnes"],
+                    "pd": date.fromisoformat(str(m["pickup_date"])),
+                    "price": m["price_per_tonne_inr"],
+                    "st": m.get("status", "PROPOSED"),
+                    "ca": datetime.fromisoformat(str(m["created_at"]).replace("Z", "+00:00")),
+                    "net": m.get("net_to_farmers_inr"),
+                })
         return {"matches_created": len(matches)}
     except ImportError:
         logger.warning("economics.match not found – using seed data")

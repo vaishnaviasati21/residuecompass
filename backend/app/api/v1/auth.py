@@ -11,7 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.errors import api_error
+from app.core.deps import CurrentUser
+from app.core.errors import api_error, not_found
 from app.core.security import create_access_token, hash_password, verify_password
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 
@@ -101,8 +102,18 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.get("/me", tags=["auth"])
-def me(db: Session = Depends(get_db), token: str | None = None):
+def me(user: CurrentUser, db: Session = Depends(get_db)):
     """Return own profile. Used by the frontend to restore session."""
-    from fastapi import Request
-    # Handled via CurrentUser dependency in a real call; this stub exists for /docs exploration.
-    return {"message": "Use Authorization: Bearer <token> header."}
+    uid = int(user.get("sub", 0))
+    with db.connection() as conn:
+        row = conn.execute(
+            text("""
+                SELECT id, name, phone, email, role, village_id, buyer_id, language
+                FROM users
+                WHERE id = :uid
+            """),
+            {"uid": uid},
+        ).mappings().first()
+    if row is None:
+        raise not_found("user", "user_id")
+    return dict(row)
