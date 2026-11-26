@@ -1,36 +1,119 @@
-from fastapi import FastAPI
+"""
+Root FastAPI application.
+
+Mounts all v1 routers and sets up:
+  - CORS
+  - duplicate health endpoint fix (removed duplicate)
+  - structured exception handler for validation errors
+  - startup banner in demo mode
+"""
+import logging
+
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from sqlalchemy import text
 
 from app.core.config import settings
 from app.core.db import engine
-from app.api.v1 import forecasts, villages, decisions, matches, burns
 
-app = FastAPI(title="Residue Compass API", version="1.0.0")
+# Routers
+from app.api.v1 import (
+    auth,
+    burns,
+    buyers,
+    decisions,
+    demo,
+    forecasts,
+    jobs,
+    matches,
+    notifications,
+    villages,
+)
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("main")
+
+app = FastAPI(
+    title="Residue Compass API",
+    version="1.0.0",
+    description=(
+        "API for the Residue Compass paddy-straw management platform.\n\n"
+        "**Roles**: officer (full access) · farmer (own village) · buyer (own matches)\n\n"
+        "**Demo mode**: set `DEMO_MODE=true` to serve pre-computed seed data without DB."
+    ),
+    docs_url="/docs",
+    redoc_url="/redoc",
+)
+
+# ── CORS ──────────────────────────────────────────────────────────────────
+origins = [o.strip() for o in settings.CORS_ORIGINS.split(",")]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # tighten before the final demo
+    allow_origins=origins,
+    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-app.include_router(villages.router, prefix="/api/v1", tags=["villages"])
-app.include_router(forecasts.router, prefix="/api/v1", tags=["forecast"])
-app.include_router(decisions.router, prefix="/api/v1", tags=["decision"])
-app.include_router(matches.router, prefix="/api/v1", tags=["matches"])
-app.include_router(burns.router, prefix="/api/v1", tags=["burn-events"])
+# ── Routers ───────────────────────────────────────────────────────────────
+PREFIX = "/api/v1"
+
+app.include_router(auth.router,          prefix=PREFIX)
+app.include_router(villages.router,      prefix=PREFIX, tags=["villages"])
+app.include_router(forecasts.router,     prefix=PREFIX, tags=["forecast"])
+app.include_router(decisions.router,     prefix=PREFIX)
+app.include_router(matches.router,       prefix=PREFIX)
+app.include_router(burns.router,         prefix=PREFIX, tags=["burn-events"])
+app.include_router(buyers.router,        prefix=PREFIX)
+app.include_router(notifications.router, prefix=PREFIX)
+app.include_router(jobs.router,          prefix=PREFIX)
+app.include_router(demo.router,          prefix=PREFIX)
 
 
-@app.get("/api/v1/health")
+# ── Health ────────────────────────────────────────────────────────────────
+@app.get("/api/v1/health", tags=["meta"])
 def health():
+    db_status = "ok"
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
-        db = "ok"
     except Exception:
-        db = "down"
-    return {"status": "ok", "database": db, "demo_mode": settings.DEMO_MODE}
-@app.get("/api/v1/health")
-def health():
-    return {"status": "ok", "demo_mode": settings.DEMO_MODE}
+        db_status = "down"
+    return {
+        "status": "ok",
+        "database": db_status,
+        "demo_mode": settings.DEMO_MODE,
+        "version": "1.0.0",
+    }
+
+
+# ── Global error handler for Pydantic validation ──────────────────────────
+from fastapi.exceptions import RequestValidationError
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    errors = []
+    for e in exc.errors():
+        errors.append({
+            "field": ".".join(str(loc) for loc in e["loc"]),
+            "message": e["msg"],
+            "type": e["type"],
+        })
+    return JSONResponse(
+        status_code=422,
+        content={"detail": {"error": {"code": "VALIDATION_ERROR",
+                                       "message": "One or more fields failed validation.",
+                                       "fields": errors}}},
+    )
+
+
+# ── Startup banner ────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup():
+    mode = "DEMO" if settings.DEMO_MODE else "PRODUCTION"
+    logger.info("=" * 60)
+    logger.info(" Residue Compass API  –  mode: %s", mode)
+    logger.info(" Docs: http://127.0.0.1:8000/docs")
+    logger.info("=" * 60)
