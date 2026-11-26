@@ -2,12 +2,17 @@
 One-click demo loop.
   POST /demo/run   – run the full village → forecast → decision → match → notify → burn-check cycle
   POST /demo/reset – reload seed data into the database (officer-only, DEMO_MODE=true only)
+
+The notification step now **persists** the notification to the notifications
+table (via sender.send_notification_for_match) rather than only rendering text.
+The rendered body is still surfaced in the response for the UI.
 """
 from fastapi import APIRouter
 
 from app.core.config import settings
 from app.core.deps import OfficerUser
 from app.core.errors import api_error
+from app.notifier.sender import send_notification_for_match
 from app.notifier.templates import render_message
 from app.schemas.demo import DemoLoopResponse, DemoLoopStep
 from app.services import queries
@@ -28,7 +33,7 @@ def demo_run(village_id: str = "PB-SNG-0142"):
     1. Pull latest forecast for the village
     2. Pull latest decision
     3. Pull first proposed match
-    4. Generate a notification message
+    4. Send + persist notification (idempotent)
     5. Pull burn events for the village
     """
     _require_demo_mode()
@@ -66,8 +71,16 @@ def demo_run(village_id: str = "PB-SNG-0142"):
         ) if match else "No PROPOSED match for this village.",
     ))
 
+    # ── Notification step: persist AND surface rendered text ──────────────
     notif_body = None
     if match and forecast:
+        # Persist to DB (idempotent – sender skips if already sent)
+        try:
+            send_notification_for_match(match["match_id"])
+        except Exception:
+            pass  # DB not available in some demo environments
+
+        # Always render for the response payload
         notif_body = render_message(
             language="pa",
             template="match_confirmed",

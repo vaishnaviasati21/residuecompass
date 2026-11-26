@@ -1,3 +1,20 @@
+"""
+Schema code generator – EXPLICIT TOOL, NOT A BUILD STEP.
+
+Usage:
+    python scripts/make_schemas.py [--force]
+
+This script can re-generate a subset of schema stubs from embedded templates.
+It is intentionally NON-DESTRUCTIVE by default:
+  - Files that already exist are SKIPPED (a warning is printed).
+  - Pass --force to overwrite existing files.
+
+The authoritative schemas are the hand-maintained files in app/schemas/.
+Do NOT import this module in application code or run it as part of CI.
+If you need to add a new schema, edit app/schemas/ directly.
+"""
+import argparse
+import sys
 from pathlib import Path
 
 SCHEMAS = Path(__file__).resolve().parents[1] / "app" / "schemas"
@@ -32,52 +49,6 @@ class VillageSummary(BaseModel):
     expected_harvest_date: date
     expected_straw_tonnes: float
     confidence: ConfidenceTag
-'''
-
-files["decision.py"] = '''from datetime import datetime
-from typing import List, Literal
-from pydantic import BaseModel
-
-
-class OptionValue(BaseModel):
-    gain: float
-    cost: float
-    net: float
-
-
-class PerTonne(BaseModel):
-    keep: OptionValue
-    sell: OptionValue
-    feed: OptionValue
-
-
-class PriceRange(BaseModel):
-    low: float
-    high: float
-
-
-class Assumptions(BaseModel):
-    fertilizer_value_per_tonne: float
-    baling_cost_per_tonne: float
-    transport_cost_per_tonne_per_km: float
-    distance_km: float
-    diesel_price_per_litre: float
-
-
-class DecisionConfidence(BaseModel):
-    tag: Literal["LOW", "MEDIUM", "HIGH"]
-    reasons: List[str]
-
-
-class Decision(BaseModel):
-    village_id: str
-    per_tonne_inr: PerTonne
-    best_option: Literal["keep", "sell", "feed"]
-    break_even_price_per_tonne_inr: float
-    price_range_inr: PriceRange
-    assumptions: Assumptions
-    confidence: DecisionConfidence
-    generated_at: datetime
 '''
 
 files["match.py"] = '''from datetime import date, datetime
@@ -132,6 +103,30 @@ class BurnEvent(BaseModel):
     source: str
 '''
 
-for name, content in files.items():
-    (SCHEMAS / name).write_text(content, encoding="utf-8")
-    print("written:", name)
+
+def main(force: bool = False) -> None:
+    written = 0
+    skipped = 0
+    for name, content in files.items():
+        target = SCHEMAS / name
+        if target.exists() and not force:
+            print(f"SKIPPED (already exists): {name}  (use --force to overwrite)")
+            skipped += 1
+            continue
+        target.write_text(content, encoding="utf-8")
+        print(f"written: {name}")
+        written += 1
+
+    print(f"\n{written} file(s) written, {skipped} file(s) skipped.")
+    if skipped:
+        print("NOTE: hand-maintained schema files were left untouched.")
+
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--force", action="store_true",
+        help="Overwrite existing schema files (destructive!).",
+    )
+    args = parser.parse_args()
+    main(force=args.force)

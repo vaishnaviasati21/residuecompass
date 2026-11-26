@@ -1,0 +1,6 @@
+ALTER TABLE forecasts
+  ADD COLUMN IF NOT EXISTS harvest_status TEXT NOT NULL DEFAULT 'GROWING'
+  CHECK (harvest_status IN ('GROWING','READY_SOON','HARVESTED'));
+
+ALTER TABLE matches
+  ADD COLUMN IF NOT EXISTS net_to_farmers_inr NUMERIC;

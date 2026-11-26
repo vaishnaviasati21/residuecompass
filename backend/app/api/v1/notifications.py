@@ -1,11 +1,13 @@
 """
 Notifications router – log of every message sent.
-  GET /notifications           – officer sees all; farmer / buyer see own
-  POST /notifications/send     – officer triggers a manual send for a match
+  GET  /notifications       – officer sees all; farmer / buyer see own
+  POST /notifications/send  – officer triggers a manual send for a match
+
+Pagination is bounded: limit 1–200, offset ≥ 0.
 """
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -35,17 +37,21 @@ def _row_to_notif(r) -> dict:
 def list_notifications(
     _user: CurrentUser,
     match_id: Optional[str] = None,
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200, description="Max results (1–200)"),
+    offset: int = Query(0, ge=0, description="Results to skip"),
     db: Session = Depends(get_db),
 ):
+    """
+    List notifications with bounded pagination.
+    Officers see all; farmers and buyers see only their own.
+    """
     role = _user.get("role")
     user_id = int(_user.get("sub", 0))
 
     where = "WHERE 1=1"
     params: dict = {"limit": limit, "offset": offset, "uid": user_id}
 
-    if role == "farmer" or role == "buyer":
+    if role in ("farmer", "buyer"):
         where += " AND n.user_id = :uid"
     if match_id:
         where += " AND n.match_id = :mid"

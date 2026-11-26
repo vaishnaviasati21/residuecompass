@@ -42,6 +42,10 @@ class Settings(BaseSettings):
     # Comma-separated list; tighten before production.
     CORS_ORIGINS: str = "*"
 
+    # ── Scheduler ────────────────────────────────────────────────────────────
+    # Standard 5-field cron for Celery beat harvest refresh task.
+    HARVEST_REFRESH_CRON: str = "0 2 * * *"
+
     model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8")
 
 

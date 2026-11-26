@@ -15,6 +15,7 @@ from app.core.deps import CurrentUser, OfficerUser
 from app.core.errors import api_error, bad_request, not_found
 from app.core.security import create_access_token, hash_password, verify_password
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
+from app.services.audit import log_action
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +46,12 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
         "village_id": user["village_id"],
         "buyer_id": user["buyer_id"],
     })
+    log_action(
+        user_id=int(user["id"]),
+        action="login",
+        entity="user",
+        entity_id=str(user["id"]),
+    )
     return TokenResponse(
         access_token=token,
         role=user["role"],
@@ -119,6 +126,13 @@ def register(
         "village_id": body.village_id,
         "buyer_id": body.buyer_id,
     })
+    log_action(
+        user_id=int(_officer.get("sub", 0)),
+        action="register_user",
+        entity="user",
+        entity_id=str(user_id),
+        details={"new_role": body.role},
+    )
     return TokenResponse(access_token=token, role=body.role, user_id=user_id, name=body.name)
 
 

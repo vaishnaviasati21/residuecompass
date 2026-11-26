@@ -1,11 +1,18 @@
-"""Fix decisions router – removed dangling Depends() usage outside FastAPI context."""
+"""
+Decision endpoints.
+  GET  /villages/{village_id}/decision  – latest recommendation
+  POST /decisions/simulate              – what-if calculator with typed assumptions
+
+The simulate endpoint accepts a typed `SimulateAssumptions` schema with
+numeric bounds validated by Pydantic before the request hits business logic.
+"""
 from typing import Optional
 
 from fastapi import APIRouter, Body
 
 from app.core.deps import FarmerUser
 from app.core.errors import forbidden, not_found
-from app.schemas.decision import Decision
+from app.schemas.decision import Decision, SimulateAssumptions
 from app.services import queries
 
 router = APIRouter(tags=["decision"])
@@ -16,7 +23,7 @@ def get_decision(
     village_id: str,
     _user: FarmerUser,
 ):
-    # Farmers can only see their own village's data
+    """Return the latest saved decision for a village (farmer scoped)."""
     if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
         raise forbidden()
     data = queries.get_decision(village_id)
@@ -29,7 +36,7 @@ def get_decision(
 def simulate_decision(
     village_id: str,
     _user: FarmerUser,
-    assumptions: dict = Body(
+    assumptions: SimulateAssumptions = Body(
         ...,
         examples=[{
             "fertilizer_value_per_tonne": 640,
@@ -43,6 +50,9 @@ def simulate_decision(
     """
     What-if calculator.  Takes the saved decision and re-computes economics
     with the caller's custom assumptions.  NOT saved to the database.
+
+    All numeric fields are validated with sensible bounds so invalid values
+    return 422 rather than a server error.
     """
     if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
         raise forbidden()
@@ -50,7 +60,10 @@ def simulate_decision(
     if base is None:
         raise not_found("decision", "village_id")
 
-    merged = {**base["assumptions"], **assumptions}
+    # Merge caller assumptions over the stored ones (caller wins)
+    caller = assumptions.model_dump(exclude_none=True)
+    merged = {**base.get("assumptions", {}), **caller}
+
     baling    = float(merged.get("baling_cost_per_tonne", 450))
     transport = float(merged.get("transport_cost_per_tonne_per_km", 12))
     dist      = float(merged.get("distance_km", 38))
@@ -64,5 +77,7 @@ def simulate_decision(
     base["per_tonne_inr"]["sell"]["cost"]            = total_cost
     base["per_tonne_inr"]["sell"]["net"]             = sell_gain - total_cost
     base["per_tonne_inr"]["keep"]["gain"]            = fert
-    base["per_tonne_inr"]["keep"]["net"]             = fert - float(base["per_tonne_inr"]["keep"]["cost"])
+    base["per_tonne_inr"]["keep"]["net"]             = (
+        fert - float(base["per_tonne_inr"]["keep"]["cost"])
+    )
     return base
