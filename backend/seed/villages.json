@@ -1,0 +1,53 @@
+[
+  {
+    "village_id": "PB-SNG-0142",
+    "village_name": "Sample Village",
+    "district": "Sangrur",
+    "centroid": {
+      "type": "Point",
+      "coordinates": [
+        75.84,
+        30.25
+      ]
+    },
+    "paddy_area_ha": 118.5,
+    "harvest_status": "READY_SOON",
+    "expected_harvest_date": "2026-10-20",
+    "expected_straw_tonnes": 410.0,
+    "confidence": "MEDIUM"
+  },
+  {
+    "village_id": "PB-SNG-0187",
+    "village_name": "Sample Village B",
+    "district": "Sangrur",
+    "centroid": {
+      "type": "Point",
+      "coordinates": [
+        75.91,
+        30.31
+      ]
+    },
+    "paddy_area_ha": 86.0,
+    "harvest_status": "GROWING",
+    "expected_harvest_date": "2026-10-27",
+    "expected_straw_tonnes": 298.0,
+    "confidence": "LOW"
+  },
+  {
+    "village_id": "PB-TTN-0031",
+    "village_name": "Sample Village C",
+    "district": "Tarn Taran",
+    "centroid": {
+      "type": "Point",
+      "coordinates": [
+        74.93,
+        31.45
+      ]
+    },
+    "paddy_area_ha": 142.3,
+    "harvest_status": "HARVESTED",
+    "expected_harvest_date": "2026-10-14",
+    "expected_straw_tonnes": 492.0,
+    "confidence": "HIGH"
+  }
+]

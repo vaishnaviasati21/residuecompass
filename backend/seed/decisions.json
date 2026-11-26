@@ -1,0 +1,42 @@
+{
+  "PB-SNG-0142": {
+    "village_id": "PB-SNG-0142",
+    "per_tonne_inr": {
+      "keep": {
+        "gain": 640,
+        "cost": 450,
+        "net": 190
+      },
+      "sell": {
+        "gain": 1500,
+        "cost": 1180,
+        "net": 320
+      },
+      "feed": {
+        "gain": 1100,
+        "cost": 900,
+        "net": 200
+      }
+    },
+    "best_option": "sell",
+    "break_even_price_per_tonne_inr": 1180,
+    "price_range_inr": {
+      "low": 1050,
+      "high": 1320
+    },
+    "assumptions": {
+      "fertilizer_value_per_tonne": 640,
+      "baling_cost_per_tonne": 450,
+      "transport_cost_per_tonne_per_km": 12,
+      "distance_km": 38,
+      "diesel_price_per_litre": 90
+    },
+    "confidence": {
+      "tag": "MEDIUM",
+      "reasons": [
+        "district-level prices used"
+      ]
+    },
+    "generated_at": "2026-10-12T06:05:00Z"
+  }
+}

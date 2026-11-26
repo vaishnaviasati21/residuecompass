@@ -1,0 +1,40 @@
+[
+  {
+    "event_id": "BE-20261023-0451",
+    "village_id": "PB-SNG-0142",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        75.84,
+        30.25
+      ]
+    },
+    "detected_on": "2026-10-23",
+    "confidence": "HIGH",
+    "evidence": {
+      "fire_points": 2,
+      "burn_scar_detected": true,
+      "burn_area_ha": 3.1
+    },
+    "source": "FIRMS+Sentinel-2"
+  },
+  {
+    "event_id": "BE-20261024-0452",
+    "village_id": "PB-SNG-0187",
+    "location": {
+      "type": "Point",
+      "coordinates": [
+        75.91,
+        30.31
+      ]
+    },
+    "detected_on": "2026-10-24",
+    "confidence": "LOW",
+    "evidence": {
+      "fire_points": 1,
+      "burn_scar_detected": false,
+      "burn_area_ha": 0.0
+    },
+    "source": "FIRMS"
+  }
+]
