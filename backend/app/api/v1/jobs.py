@@ -28,7 +28,7 @@ _runs: dict[str, dict] = {}
 @router.post("/run", response_model=JobStatusResponse, status_code=202)
 def trigger_job(
     body: JobTriggerRequest,
-    _user: dict = Depends(OfficerUser),
+    _user: OfficerUser,
     db: Session = Depends(get_db),
 ):
     run_id = str(uuid.uuid4())
@@ -50,7 +50,7 @@ def trigger_job(
 
 
 @router.get("/{run_id}", response_model=JobStatusResponse)
-def job_status(run_id: str, _user: dict = Depends(OfficerUser)):
+def job_status(run_id: str, _user: OfficerUser):
     entry = _runs.get(run_id)
     if entry is None:
         raise not_found("job_run", "run_id")

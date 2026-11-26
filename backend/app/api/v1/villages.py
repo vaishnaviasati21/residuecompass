@@ -1,10 +1,10 @@
 """Villages router – list and detail, with optional district filter."""
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.core.deps import CurrentUser
-from app.core.errors import not_found
+from app.core.errors import forbidden, not_found
 from app.schemas.village import VillageSummary
 from app.services import queries
 
@@ -13,8 +13,8 @@ router = APIRouter(tags=["villages"])
 
 @router.get("/villages", response_model=List[VillageSummary])
 def list_villages(
+    _user: CurrentUser,
     district: Optional[str] = None,
-    _user: dict = Depends(CurrentUser),
 ):
     # Farmers see only their own village
     if _user.get("role") == "farmer":
@@ -27,8 +27,10 @@ def list_villages(
 @router.get("/villages/{village_id}", response_model=VillageSummary)
 def get_village(
     village_id: str,
-    _user: dict = Depends(CurrentUser),
+    _user: CurrentUser,
 ):
+    if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
+        raise forbidden("Farmers can only access their own village.")
     v = queries.get_village(village_id)
     if v is None:
         raise not_found("village", "village_id")

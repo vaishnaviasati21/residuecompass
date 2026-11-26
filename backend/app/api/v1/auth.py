@@ -11,8 +11,8 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from app.core.db import get_db
-from app.core.deps import CurrentUser
-from app.core.errors import api_error, not_found
+from app.core.deps import CurrentUser, OfficerUser
+from app.core.errors import api_error, bad_request, not_found
 from app.core.security import create_access_token, hash_password, verify_password
 from app.schemas.auth import LoginRequest, RegisterRequest, TokenResponse
 
@@ -54,23 +54,44 @@ def login(body: LoginRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-def register(body: RegisterRequest, db: Session = Depends(get_db)):
+def register(
+    body: RegisterRequest,
+    _officer: OfficerUser,
+    db: Session = Depends(get_db),
+):
     """
-    Self-registration for farmers and buyers.
-    Officers must be seeded or created by another officer (not via this endpoint).
+    Officer-only account provisioning for farmers and buyers.
+    Prevents unauthenticated users from claiming arbitrary village_id or buyer_id.
     """
     if body.role == "officer":
         raise api_error(403, "OFFICER_REGISTRATION_CLOSED",
                         "Officer accounts are created by administrators only.")
+    if not body.phone and not body.email:
+        raise bad_request("MISSING_FIELD", "Either phone or email is required.", "phone")
     if body.role == "farmer" and not body.village_id:
-        raise api_error(400, "MISSING_FIELD", "village_id is required for farmers.", "village_id")
+        raise bad_request("MISSING_FIELD", "village_id is required for farmers.", "village_id")
     if body.role == "buyer" and not body.buyer_id:
-        raise api_error(400, "MISSING_FIELD", "buyer_id is required for buyers.", "buyer_id")
+        raise bad_request("MISSING_FIELD", "buyer_id is required for buyers.", "buyer_id")
 
     with db.connection() as conn:
+        if body.role == "farmer":
+            v_ok = conn.execute(
+                text("SELECT 1 FROM villages WHERE id = :vid"),
+                {"vid": body.village_id},
+            ).first()
+            if not v_ok:
+                raise not_found("village", "village_id")
+        if body.role == "buyer":
+            b_ok = conn.execute(
+                text("SELECT 1 FROM buyers WHERE id = :bid"),
+                {"bid": body.buyer_id},
+            ).first()
+            if not b_ok:
+                raise not_found("buyer", "buyer_id")
+
         # Uniqueness check
         exists = conn.execute(
-            text("SELECT 1 FROM users WHERE phone=:ph OR email=:em LIMIT 1"),
+            text("SELECT 1 FROM users WHERE (phone IS NOT NULL AND phone=:ph) OR (email IS NOT NULL AND email=:em) LIMIT 1"),
             {"ph": body.phone, "em": body.email},
         ).first()
         if exists:

@@ -32,10 +32,10 @@ def _row_to_buyer(r) -> dict:
 
 @router.get("", response_model=list[Buyer])
 def list_buyers(
+    _user: FarmerUser,
     buyer_type: Optional[str] = None,
     active_only: bool = True,
     db: Session = Depends(get_db),
-    _user: dict = Depends(FarmerUser),
 ):
     sql = text("""
         SELECT id, name, type, capacity_t_per_day, price_per_tonne_inr, active,
@@ -56,8 +56,8 @@ def list_buyers(
 @router.get("/{buyer_id}", response_model=Buyer)
 def get_buyer(
     buyer_id: str,
+    _user: FarmerUser,
     db: Session = Depends(get_db),
-    _user: dict = Depends(FarmerUser),
 ):
     sql = text("""
         SELECT id, name, type, capacity_t_per_day, price_per_tonne_inr, active,
@@ -74,11 +74,11 @@ def get_buyer(
 @router.patch("/{buyer_id}", response_model=Buyer)
 def update_buyer(
     buyer_id: str,
+    _user: OfficerUser,
     price_per_tonne_inr: Optional[float] = None,
     capacity_t_per_day: Optional[float] = None,
     active: Optional[bool] = None,
     db: Session = Depends(get_db),
-    _user: dict = Depends(OfficerUser),
 ):
     """Officer-only: adjust pricing / availability."""
     updates = {}

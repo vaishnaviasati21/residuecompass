@@ -2,7 +2,16 @@
 Central settings – read from environment / .env file.
 All other modules import *only* from here; never read os.environ directly.
 """
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_KNOWN_INSECURE_SECRETS = {
+    "",
+    "change_me",
+    "change_me_in_production_min_32_chars",
+    "change_me_to_a_long_random_string_before_deploy",
+    "secret",
+    "dev",
+}
 
 
 class Settings(BaseSettings):
@@ -13,14 +22,14 @@ class Settings(BaseSettings):
     REDIS_URL: str = "redis://localhost:6379/0"
 
     # ── Auth ─────────────────────────────────────────────────────────────────
-    SECRET_KEY: str = "change_me_in_production_min_32_chars"
-    # HS256 is fine for internal demo; switch to RS256 for multi-service prod
+    # Must be set via environment / .env (min 32 chars in production).
+    SECRET_KEY: str = ""
     JWT_ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 60 * 8   # 8 hours
 
     # ── Feature flags ────────────────────────────────────────────────────────
-    # When True the API reads seed JSON instead of calling ML/economics modules
-    DEMO_MODE: bool = True
+    # When True the API allows demo endpoints; production must set DEMO_MODE=false.
+    DEMO_MODE: bool = False
 
     # ── Notification channels ────────────────────────────────────────────────
     # Supported: "log" | "twilio_sms" | "twilio_whatsapp"
@@ -30,12 +39,26 @@ class Settings(BaseSettings):
     TWILIO_FROM_NUMBER: str = ""   # e.g. "+14155238886" for WhatsApp sandbox
 
     # ── CORS ─────────────────────────────────────────────────────────────────
-    # Comma-separated list; "*" for open demo, tighten before production
+    # Comma-separated list; tighten before production.
     CORS_ORIGINS: str = "*"
 
-    class Config:
-        env_file = "../.env"
-        env_file_encoding = "utf-8"
+    model_config = SettingsConfigDict(env_file="../.env", env_file_encoding="utf-8")
 
 
 settings = Settings()
+
+
+def validate_security_config() -> None:
+    """
+    Fail closed if SECRET_KEY is missing, a known placeholder, or too short.
+    Called during application startup and token operations.
+    """
+    key = (settings.SECRET_KEY or "").strip()
+    if not key or key in _KNOWN_INSECURE_SECRETS:
+        raise RuntimeError(
+            "Unsafe SECRET_KEY configuration: set a strong random SECRET_KEY (>= 32 chars) in environment/.env."
+        )
+    if len(key) < 32:
+        raise RuntimeError(
+            "Unsafe SECRET_KEY configuration: SECRET_KEY must be at least 32 characters."
+        )

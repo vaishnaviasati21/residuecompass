@@ -4,6 +4,7 @@ from datetime import date, datetime, timedelta
 from sqlalchemy import text
 
 from app.adapters.seed_loader import load_seed
+from app.core.config import settings
 from app.core.db import engine
 
 
@@ -12,6 +13,10 @@ def ts(value: str) -> datetime:
 
 
 def main():
+    if not settings.DEMO_MODE:
+        raise RuntimeError(
+            "Refusing to run load_seed.py when DEMO_MODE=false because it truncates operational tables."
+        )
     villages = load_seed("villages")
     forecasts = load_seed("forecasts")
     decisions = load_seed("decisions")

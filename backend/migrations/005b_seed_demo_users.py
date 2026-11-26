@@ -1,6 +1,6 @@
 """
-Migration 005 also seeds demo farmer and buyer users.
-Run with:  python migrations/005_seed_officer.py
+Demo-only seed farmer and buyer users.
+Refuses to run when DEMO_MODE=false so demo credentials never enter production.
 """
 
 revision = "005b"
@@ -8,6 +8,10 @@ down_revision = "005"
 
 
 def upgrade(op=None):
+    from app.core.config import settings
+    if not settings.DEMO_MODE:
+        raise RuntimeError("Refusing to seed demo farmer/buyer accounts when DEMO_MODE=false.")
+
     sql = """
     INSERT INTO users (name, phone, email, password_hash, role, village_id, language)
     VALUES (
@@ -40,6 +44,10 @@ def upgrade(op=None):
         from sqlalchemy import text
         with engine.begin() as conn:
             conn.execute(text(sql))
+
+
+def downgrade(op=None):
+    pass
 
 
 if __name__ == "__main__":

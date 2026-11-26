@@ -33,10 +33,10 @@ def _row_to_notif(r) -> dict:
 
 @router.get("", response_model=NotificationList)
 def list_notifications(
+    _user: CurrentUser,
     match_id: Optional[str] = None,
     limit: int = 50,
     offset: int = 0,
-    _user: dict = Depends(CurrentUser),
     db: Session = Depends(get_db),
 ):
     role = _user.get("role")
@@ -71,7 +71,7 @@ def list_notifications(
 @router.post("/send", status_code=202)
 def trigger_send(
     match_id: str,
-    _user: dict = Depends(OfficerUser),
+    _user: OfficerUser,
     db: Session = Depends(get_db),
 ):
     """Officer manually triggers notification for a match (e.g., after confirmation)."""

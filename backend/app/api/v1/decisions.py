@@ -1,7 +1,7 @@
 """Fix decisions router – removed dangling Depends() usage outside FastAPI context."""
 from typing import Optional
 
-from fastapi import APIRouter, Body, Depends
+from fastapi import APIRouter, Body
 
 from app.core.deps import FarmerUser
 from app.core.errors import forbidden, not_found
@@ -14,7 +14,7 @@ router = APIRouter(tags=["decision"])
 @router.get("/villages/{village_id}/decision", response_model=Decision)
 def get_decision(
     village_id: str,
-    _user: dict = Depends(FarmerUser),
+    _user: FarmerUser,
 ):
     # Farmers can only see their own village's data
     if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
@@ -28,6 +28,7 @@ def get_decision(
 @router.post("/decisions/simulate", response_model=Decision, tags=["decision"])
 def simulate_decision(
     village_id: str,
+    _user: FarmerUser,
     assumptions: dict = Body(
         ...,
         examples=[{
@@ -38,12 +39,13 @@ def simulate_decision(
             "diesel_price_per_litre": 90,
         }],
     ),
-    _user: dict = Depends(FarmerUser),
 ):
     """
     What-if calculator.  Takes the saved decision and re-computes economics
     with the caller's custom assumptions.  NOT saved to the database.
     """
+    if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
+        raise forbidden()
     base = queries.get_decision(village_id)
     if base is None:
         raise not_found("decision", "village_id")

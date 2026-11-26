@@ -53,21 +53,87 @@ def test_health():
     assert "demo_mode" in body
 
 
-# ── Auth error contract ───────────────────────────────────────────────────
+# ── Auth & authorization contract ─────────────────────────────────────────
 
 def test_unauthenticated_returns_401():
-    r = client.get("/api/v1/villages")
-    assert r.status_code == 401
-    assert "error" in r.json()["detail"]
+    for method, path in [
+        ("GET", "/api/v1/villages"),
+        ("POST", "/api/v1/auth/register"),
+        ("POST", "/api/v1/demo/reset"),
+    ]:
+        r = client.request(method, path)
+        assert r.status_code == 401, f"{method} {path} returned {r.status_code}"
+        assert "error" in r.json()["detail"]
 
 
 def test_wrong_role_returns_403():
-    # buyer trying to access officer-only job endpoint
+    # buyer trying to access officer-only job/reset/register endpoints
     token = buyer_token()
     r = client.post("/api/v1/jobs/run",
                     json={"job": "daily_refresh"},
                     headers=auth(token))
     assert r.status_code == 403
+
+    r_reset = client.post("/api/v1/demo/reset", headers=auth(token))
+    assert r_reset.status_code == 403
+
+    r_reg = client.post(
+        "/api/v1/auth/register",
+        json={"name": "Fake", "phone": "+919999999999", "password": "password123",
+              "role": "farmer", "village_id": "PB-SNG-0142"},
+        headers=auth(token),
+    )
+    assert r_reg.status_code == 403
+
+
+def test_farmer_cross_village_access_forbidden():
+    token = farmer_token("PB-SNG-0142")
+    assert client.get("/api/v1/villages/PB-TTN-0031", headers=auth(token)).status_code == 403
+    assert client.get("/api/v1/matches?village_id=PB-TTN-0031", headers=auth(token)).status_code == 403
+    assert client.get("/api/v1/burn-events?village_id=PB-TTN-0031", headers=auth(token)).status_code == 403
+    assert client.post(
+        "/api/v1/decisions/simulate?village_id=PB-TTN-0031",
+        json={"distance_km": 10},
+        headers=auth(token),
+    ).status_code == 403
+
+
+def test_security_config_fails_closed(monkeypatch):
+    from app.core import config
+    monkeypatch.setattr(config.settings, "SECRET_KEY", "change_me")
+    with pytest.raises(RuntimeError):
+        config.validate_security_config()
+
+    monkeypatch.setattr(config.settings, "SECRET_KEY", "short")
+    with pytest.raises(RuntimeError):
+        config.validate_security_config()
+
+
+def test_demo_seeder_refuses_when_demo_mode_false(monkeypatch):
+    from app.core import config
+    from scripts import load_seed, seed_demo
+    monkeypatch.setattr(config.settings, "DEMO_MODE", False)
+    with pytest.raises(RuntimeError):
+        load_seed.main()
+    with pytest.raises(RuntimeError):
+        seed_demo.main()
+
+
+def test_demo_endpoints_disabled_when_demo_mode_false(monkeypatch):
+    from app.core import config
+    monkeypatch.setattr(config.settings, "DEMO_MODE", False)
+    r_run = client.post("/api/v1/demo/run?village_id=PB-SNG-0142")
+    assert r_run.status_code == 403
+    r_reset = client.post("/api/v1/demo/reset", headers=auth(officer_token()))
+    assert r_reset.status_code == 403
+
+
+def test_password_hash_and_verify():
+    from app.core.security import hash_password, verify_password
+    hashed = hash_password("strong_pass_123")
+    assert hashed != "strong_pass_123"
+    assert verify_password("strong_pass_123", hashed)
+    assert not verify_password("wrong_pass", hashed)
 
 
 # ── Error envelope format ─────────────────────────────────────────────────

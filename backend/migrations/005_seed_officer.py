@@ -1,6 +1,6 @@
 """
-Migration 005 – add officer seed user (password: officer123).
-Idempotent: safe to run multiple times.
+Demo-only seed officer user (password: officer123).
+Refuses to run when DEMO_MODE=false so demo credentials never enter production.
 """
 
 revision = "005"
@@ -8,7 +8,10 @@ down_revision = "004"
 
 
 def upgrade(op=None):
-    # bcrypt hash of "officer123" – pre-computed so the migration has no library dependency
+    from app.core.config import settings
+    if not settings.DEMO_MODE:
+        raise RuntimeError("Refusing to seed demo officer account when DEMO_MODE=false.")
+
     sql = """
     INSERT INTO users (name, phone, email, password_hash, role, language)
     VALUES (

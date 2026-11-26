@@ -2,7 +2,7 @@
 Forecasts router – villages/{village_id}/forecast.
 Farmers can only view their own village; officers can view any.
 """
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter
 
 from app.core.deps import FarmerUser
 from app.core.errors import forbidden, not_found
@@ -15,7 +15,7 @@ router = APIRouter(tags=["forecast"])
 @router.get("/villages/{village_id}/forecast", response_model=Forecast)
 def get_forecast(
     village_id: str,
-    _user: dict = Depends(FarmerUser),
+    _user: FarmerUser,
 ):
     if _user.get("role") == "farmer" and _user.get("village_id") != village_id:
         raise forbidden()
